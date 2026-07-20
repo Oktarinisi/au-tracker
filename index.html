@@ -446,7 +446,7 @@ const firebaseConfig = {
 let db = null;
 let auth = null;
 let useFirebase = false;
-let roomCode = localStorage.getItem('au-room-code') || '';
+let roomCode = '';
 let unsubscribe = null;
 let currentUser = null;
 let roomOwnerUid = null; // ownerUid dari dokumen rak yang sedang dibuka
@@ -542,8 +542,7 @@ function renderSyncBar(){
   const backToMineHtml = (currentUser && myRoomCode && myRoomCode !== roomCode)
     ? `<button class="btn-mine" id="btn-back-mine">← balik ke rak aku</button>` : '';
 
-  el.innerHTML = `
-    ${authHtml}
+  const roomRowHtml = roomCode ? `
     <div class="sync-row">
       <span>kode rak:</span> <code id="room-code-display">${esc(roomCode)}</code>
       ${ownerBadge}
@@ -555,6 +554,19 @@ function renderSyncBar(){
       <input type="text" id="join-input" placeholder="masukin kode rak (cth. AB12CD)">
       <button id="btn-join-go">gabung</button>
     </div>
+  ` : `
+    <div class="sync-row">
+      <button id="btn-join">punya kode rak temen? masukin di sini</button>
+    </div>
+    <div class="join-box" id="join-box">
+      <input type="text" id="join-input" placeholder="masukin kode rak (cth. AB12CD)">
+      <button id="btn-join-go">gabung</button>
+    </div>
+  `;
+
+  el.innerHTML = `
+    ${authHtml}
+    ${roomRowHtml}
   `;
 
   if(currentUser){
@@ -562,12 +574,14 @@ function renderSyncBar(){
   }else{
     document.getElementById('btn-login').addEventListener('click', loginGoogle);
   }
-  document.getElementById('btn-copy-code').addEventListener('click', async ()=>{
-    try{ await navigator.clipboard.writeText(roomCode); }catch(e){}
-    const b = document.getElementById('btn-copy-code');
-    b.textContent = 'tersalin ✓';
-    setTimeout(()=>{ b.textContent = 'salin kode'; }, 1400);
-  });
+  if(roomCode){
+    document.getElementById('btn-copy-code').addEventListener('click', async ()=>{
+      try{ await navigator.clipboard.writeText(roomCode); }catch(e){}
+      const b = document.getElementById('btn-copy-code');
+      b.textContent = 'tersalin ✓';
+      setTimeout(()=>{ b.textContent = 'salin kode'; }, 1400);
+    });
+  }
   document.getElementById('btn-join').addEventListener('click', ()=>{
     document.getElementById('join-box').classList.toggle('open');
   });
@@ -585,7 +599,6 @@ function renderSyncBar(){
 
 function switchRoom(code){
   roomCode = code;
-  localStorage.setItem('au-room-code', roomCode);
   renderSyncBar();
   subscribeEntries();
 }
@@ -621,19 +634,23 @@ async function loadEntries(){
         try{
           myRoomCode = await ensureOwnRoom(user);
           // kalau belum lagi lihat rak orang lain, arahkan ke rak sendiri
-          if(!roomCode || roomCode === '') roomCode = myRoomCode;
+          if(!roomCode) roomCode = myRoomCode;
         }catch(e){
           console.error('gagal siapin rak sendiri', e);
         }
       }else{
         myRoomCode = null;
-        if(!roomCode){
-          document.getElementById('list').innerHTML =
-            `<div class="empty"><b>belum ada rak yang dibuka</b>login dengan Google buat bikin rak sendiri, atau masukin kode rak temenmu di atas buat liat-liat.</div>`;
-        }
+        roomCode = '';
+        roomOwnerUid = null;
+        if(unsubscribe){ unsubscribe(); unsubscribe = null; }
+        entries = [];
+        document.getElementById('list').innerHTML =
+          `<div class="empty"><b>belum ada rak yang dibuka</b>login dengan Google buat bikin rak sendiri, atau masukin kode rak temenmu di atas buat liat-liat.</div>`;
+        renderComposerLock();
+        renderStats();
+        renderFilters();
       }
       authReady = true;
-      localStorage.setItem('au-room-code', roomCode || '');
       renderSyncBar();
       if(roomCode) subscribeEntries();
     });
@@ -724,10 +741,8 @@ function renderList(){
           <span class="status-badge ${meta.cls}">${meta.label}</span>
           ${canEdit ? `
           <div class="card-actions">
-            ${(!useFirebase || isOwner()) ? `
             <button class="edit-btn" data-id="${e.id}" title="edit">✎</button>
             <button class="del" data-id="${e.id}" title="hapus">✕</button>
-            ` : ''}
           </div>
           ` : ''}
         </div>
@@ -940,7 +955,9 @@ function renderComposerLock(){
       note = document.createElement('div');
       note.id = noteId;
       note.className = 'view-only-note';
-      note.textContent = 'ini rak orang lain — kamu cuma bisa lihat, enggak bisa nambah/edit/hapus.';
+      note.textContent = roomCode
+        ? 'ini rak orang lain — kamu cuma bisa lihat, enggak bisa nambah/edit/hapus.'
+        : 'login dengan Google buat bikin rak sendiri, atau masukin kode rak temenmu buat liat-liat.';
       composerEl.parentNode.insertBefore(note, composerEl);
     }
   }
