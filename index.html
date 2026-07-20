@@ -724,8 +724,10 @@ function renderList(){
           <span class="status-badge ${meta.cls}">${meta.label}</span>
           ${canEdit ? `
           <div class="card-actions">
+            ${(!useFirebase || isOwner()) ? `
             <button class="edit-btn" data-id="${e.id}" title="edit">✎</button>
             <button class="del" data-id="${e.id}" title="hapus">✕</button>
+            ` : ''}
           </div>
           ` : ''}
         </div>
