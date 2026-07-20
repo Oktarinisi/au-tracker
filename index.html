@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <style>
   :root{
     --pink:#ffb8d4;
@@ -78,6 +79,36 @@
   .join-box button{
     background:var(--accent2);color:#fff;border:none;border-radius:7px;
     padding:0 14px;font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:600;cursor:pointer;
+  }
+  .auth-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+  .auth-row img{width:22px;height:22px;border-radius:50%;}
+  .auth-row .who{font-size:12.5px;color:var(--ink);font-weight:600;}
+  .btn-google{
+    display:flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--border);
+    color:var(--ink);font-family:'Inter',sans-serif;font-size:12.5px;font-weight:600;
+    padding:7px 12px;border-radius:8px;cursor:pointer;
+  }
+  .btn-google:hover{border-color:var(--accent2);}
+  .btn-logout{
+    background:none;border:1px solid var(--border);color:var(--ink-muted);
+    font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px 10px;
+    border-radius:7px;cursor:pointer;
+  }
+  .owner-badge{
+    font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;
+    padding:3px 9px;border-radius:999px;letter-spacing:.03em;
+  }
+  .owner-badge.mine{background:#e2f6ea;color:var(--success);}
+  .owner-badge.view{background:#fdf1de;color:var(--warn);}
+  .btn-mine{
+    background:none;border:1px solid var(--border);color:var(--accent2);
+    font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px 10px;
+    border-radius:7px;cursor:pointer;
+  }
+  .composer.locked{opacity:0.5;pointer-events:none;position:relative;}
+  .view-only-note{
+    font-size:12px;color:var(--ink-muted);background:var(--surface);border:1px dashed var(--border);
+    border-radius:10px;padding:10px 14px;margin-bottom:20px;
   }
 
   .stats{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
@@ -414,19 +445,63 @@ const firebaseConfig = {
 // ================================================
 
 let db = null;
+let auth = null;
 let useFirebase = false;
 let roomCode = localStorage.getItem('au-room-code') || '';
 let unsubscribe = null;
+let currentUser = null;
+let roomOwnerUid = null; // ownerUid dari dokumen rak yang sedang dibuka
+let myRoomCode = null;   // rak milik currentUser (dari au-owners/{uid})
+let authReady = false;
 
 try{
   if(firebaseConfig.apiKey && firebaseConfig.apiKey !== "PASTE_API_KEY_DI_SINI"){
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
+    auth = firebase.auth();
     useFirebase = true;
   }
 }catch(e){
   console.error('firebase gagal init', e);
   useFirebase = false;
+}
+
+function isOwner(){
+  // di mode localStorage (tanpa firebase), selalu bisa edit (cuma tersimpan di device sendiri)
+  if(!useFirebase) return true;
+  return !!(currentUser && roomOwnerUid && currentUser.uid === roomOwnerUid);
+}
+
+async function loginGoogle(){
+  if(!auth) return;
+  try{
+    const provider = new firebase.auth.GoogleAuthProvider();
+    await auth.signInWithPopup(provider);
+  }catch(e){
+    console.error('login gagal', e);
+    alert('login gagal, coba lagi ya');
+  }
+}
+
+async function logoutUser(){
+  if(!auth) return;
+  try{ await auth.signOut(); }catch(e){ console.error('logout gagal', e); }
+}
+
+// dipanggil sekali saat user berhasil login, buat cari/bikinin rak miliknya sendiri
+async function ensureOwnRoom(user){
+  const ownerRef = db.collection('au-owners').doc(user.uid);
+  const ownerSnap = await ownerRef.get();
+  if(ownerSnap.exists && ownerSnap.data().roomCode){
+    myRoomCode = ownerSnap.data().roomCode;
+    return myRoomCode;
+  }
+  // belum punya rak -> bikin baru
+  let code = genCode();
+  await db.collection('au-lists').doc(code).set({ entries: [], ownerUid: user.uid }, { merge:true });
+  await ownerRef.set({ roomCode: code, email: user.email || null });
+  myRoomCode = code;
+  return code;
 }
 
 function genCode(){
@@ -444,17 +519,50 @@ function renderSyncBar(){
     return;
   }
   el.classList.remove('offline');
+
+  const authHtml = currentUser
+    ? `
+      <div class="auth-row">
+        ${currentUser.photoURL ? `<img src="${esc(currentUser.photoURL)}" alt="">` : ''}
+        <span class="who">${esc(currentUser.displayName || currentUser.email || 'kamu')}</span>
+        <button class="btn-logout" id="btn-logout">logout</button>
+      </div>`
+    : `
+      <div class="auth-row">
+        <button class="btn-google" id="btn-login">🔵 login dengan Google</button>
+        <span style="font-size:11.5px;color:var(--ink-muted);">buat punya rak sendiri &amp; bisa edit</span>
+      </div>`;
+
+  let ownerBadge = '';
+  if(authReady && roomOwnerUid){
+    ownerBadge = isOwner()
+      ? `<span class="owner-badge mine">👑 rak kamu</span>`
+      : `<span class="owner-badge view">👁 mode lihat aja</span>`;
+  }
+
+  const backToMineHtml = (currentUser && myRoomCode && myRoomCode !== roomCode)
+    ? `<button class="btn-mine" id="btn-back-mine">← balik ke rak aku</button>` : '';
+
   el.innerHTML = `
+    ${authHtml}
     <div class="sync-row">
-      <span>kode rak kamu:</span> <code id="room-code-display">${esc(roomCode)}</code>
+      <span>kode rak:</span> <code id="room-code-display">${esc(roomCode)}</code>
+      ${ownerBadge}
       <button id="btn-copy-code">salin kode</button>
       <button id="btn-join">pakai kode lain</button>
+      ${backToMineHtml}
     </div>
     <div class="join-box" id="join-box">
       <input type="text" id="join-input" placeholder="masukin kode rak (cth. AB12CD)">
       <button id="btn-join-go">gabung</button>
     </div>
   `;
+
+  if(currentUser){
+    document.getElementById('btn-logout').addEventListener('click', logoutUser);
+  }else{
+    document.getElementById('btn-login').addEventListener('click', loginGoogle);
+  }
   document.getElementById('btn-copy-code').addEventListener('click', async ()=>{
     try{ await navigator.clipboard.writeText(roomCode); }catch(e){}
     const b = document.getElementById('btn-copy-code');
@@ -469,6 +577,11 @@ function renderSyncBar(){
     if(!val) return;
     switchRoom(val);
   });
+  if(backToMineHtml){
+    document.getElementById('btn-back-mine').addEventListener('click', ()=>{
+      switchRoom(myRoomCode);
+    });
+  }
 }
 
 function switchRoom(code){
@@ -482,7 +595,10 @@ function subscribeEntries(){
   if(!useFirebase) return;
   if(unsubscribe) unsubscribe();
   unsubscribe = db.collection('au-lists').doc(roomCode).onSnapshot(doc=>{
-    entries = (doc.exists && doc.data().entries) ? doc.data().entries : [];
+    const data = doc.exists ? doc.data() : {};
+    entries = data.entries || [];
+    roomOwnerUid = data.ownerUid || null;
+    renderSyncBar();
     render();
   }, err=>{
     console.error('gagal sinkron', err);
@@ -500,12 +616,28 @@ function esc(s){ const d=document.createElement('div'); d.textContent=s||''; ret
 async function loadEntries(){
   renderSyncBar();
   if(useFirebase){
-    if(!roomCode){
-      roomCode = genCode();
-      localStorage.setItem('au-room-code', roomCode);
-    }
-    renderSyncBar();
-    subscribeEntries();
+    auth.onAuthStateChanged(async (user)=>{
+      currentUser = user;
+      if(user){
+        try{
+          myRoomCode = await ensureOwnRoom(user);
+          // kalau belum lagi lihat rak orang lain, arahkan ke rak sendiri
+          if(!roomCode || roomCode === '') roomCode = myRoomCode;
+        }catch(e){
+          console.error('gagal siapin rak sendiri', e);
+        }
+      }else{
+        myRoomCode = null;
+        if(!roomCode){
+          document.getElementById('list').innerHTML =
+            `<div class="empty"><b>belum ada rak yang dibuka</b>login dengan Google buat bikin rak sendiri, atau masukin kode rak temenmu di atas buat liat-liat.</div>`;
+        }
+      }
+      authReady = true;
+      localStorage.setItem('au-room-code', roomCode || '');
+      renderSyncBar();
+      if(roomCode) subscribeEntries();
+    });
     return;
   }
   try{
@@ -588,8 +720,10 @@ function renderList(){
         <div class="badge-row">
           <span class="status-badge ${meta.cls}">${meta.label}</span>
           <div class="card-actions">
+            ${(!useFirebase || isOwner()) ? `
             <button class="edit-btn" data-id="${e.id}" title="edit">✎</button>
             <button class="del" data-id="${e.id}" title="hapus">✕</button>
+            ` : ''}
           </div>
         </div>
         <div class="card-title">${titleHtml}</div>
@@ -609,6 +743,7 @@ function renderList(){
 
   el.querySelectorAll('.del').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
+      if(useFirebase && !isOwner()) return;
       const id = btn.getAttribute('data-id');
       entries = entries.filter(e=>e.id !== id);
       await saveEntries();
@@ -618,6 +753,7 @@ function renderList(){
 
   el.querySelectorAll('.edit-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
+      if(useFirebase && !isOwner()) return;
       openEditModal(btn.getAttribute('data-id'));
     });
   });
@@ -778,6 +914,7 @@ function renderAutocomplete(){
 }
 
 function render(){
+  renderComposerLock();
   renderStats();
   renderDashboard();
   renderFilters();
@@ -785,7 +922,27 @@ function render(){
   renderAutocomplete();
 }
 
+function renderComposerLock(){
+  const composerEl = document.querySelector('.composer');
+  const noteId = 'view-only-note';
+  let note = document.getElementById(noteId);
+  if(!useFirebase || isOwner()){
+    composerEl.classList.remove('locked');
+    if(note) note.remove();
+  }else{
+    composerEl.classList.add('locked');
+    if(!note){
+      note = document.createElement('div');
+      note.id = noteId;
+      note.className = 'view-only-note';
+      note.textContent = 'ini rak orang lain — kamu cuma bisa lihat, enggak bisa nambah/edit/hapus.';
+      composerEl.parentNode.insertBefore(note, composerEl);
+    }
+  }
+}
+
 async function addEntry(){
+  if(useFirebase && !isOwner()){ alert('ini rak orang lain, kamu enggak bisa nambah AU di sini.'); return; }
   const title = document.getElementById('f-title').value.trim();
   if(!title){ document.getElementById('f-title').focus(); return; }
   const entry = {
