@@ -105,7 +105,6 @@
     font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px 10px;
     border-radius:7px;cursor:pointer;
   }
-  .composer.locked{opacity:0.5;pointer-events:none;position:relative;}
   .view-only-note{
     font-size:12px;color:var(--ink-muted);background:var(--surface);border:1px dashed var(--border);
     border-radius:10px;padding:10px 14px;margin-bottom:20px;
@@ -703,28 +702,34 @@ function renderList(){
 
   el.innerHTML = filtered.map(e=>{
     const meta = STATUS_META[e.status] || STATUS_META.plan;
-    const activeLink = (e.status === 'reading' && e.lastLink) ? e.lastLink : e.link;
+    const canEdit = !useFirebase || isOwner();
+    // di mode "lihat aja", selalu buka link thread awal — lastLink itu progres pribadi si pemilik rak
+    const activeLink = (canEdit && e.status === 'reading' && e.lastLink) ? e.lastLink : e.link;
     const titleHtml = activeLink
       ? `<a href="${esc(activeLink)}" target="_blank" rel="noopener">${esc(e.title)}</a>`
       : esc(e.title);
     let jumpHint = '';
-    if(e.status === 'reading' && e.lastLink){
+    if(canEdit && e.status === 'reading' && e.lastLink){
       jumpHint = `<div class="jump-hint">↳ klik judul buat <b>lanjut dari part terakhir</b></div>`;
-    }else if(e.status === 'reading' && !e.lastLink && e.link){
+    }else if(canEdit && e.status === 'reading' && !e.lastLink && e.link){
       jumpHint = `<div class="jump-hint">↳ belum ada link part terakhir, klik judul buat ke awal thread</div>`;
     }else if(e.status === 'plan' && e.link){
       jumpHint = `<div class="jump-hint">↳ klik judul buat mulai dari awal thread</div>`;
+    }else if(!canEdit && e.status === 'reading' && e.link){
+      jumpHint = `<div class="jump-hint">↳ klik judul buat ke awal thread</div>`;
     }
     return `
       <div class="card">
         <div class="badge-row">
           <span class="status-badge ${meta.cls}">${meta.label}</span>
+          ${canEdit ? `
           <div class="card-actions">
             ${(!useFirebase || isOwner()) ? `
             <button class="edit-btn" data-id="${e.id}" title="edit">✎</button>
             <button class="del" data-id="${e.id}" title="hapus">✕</button>
             ` : ''}
           </div>
+          ` : ''}
         </div>
         <div class="card-title">${titleHtml}</div>
         ${jumpHint}
@@ -763,7 +768,7 @@ function renderList(){
       const id = btn.getAttribute('data-id');
       const entry = entries.find(x=>x.id === id);
       if(!entry) return;
-      const link = (entry.status === 'reading' && entry.lastLink) ? entry.lastLink : entry.link;
+      const link = (isOwner() && entry.status === 'reading' && entry.lastLink) ? entry.lastLink : entry.link;
       if(!link) return;
       try{
         await navigator.clipboard.writeText(link);
@@ -927,10 +932,10 @@ function renderComposerLock(){
   const noteId = 'view-only-note';
   let note = document.getElementById(noteId);
   if(!useFirebase || isOwner()){
-    composerEl.classList.remove('locked');
+    composerEl.style.display = '';
     if(note) note.remove();
   }else{
-    composerEl.classList.add('locked');
+    composerEl.style.display = 'none';
     if(!note){
       note = document.createElement('div');
       note.id = noteId;
