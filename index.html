@@ -40,7 +40,7 @@
     min-height:100vh;
     padding:28px 16px 70px;
   }
-  .wrap{max-width:640px;margin:0 auto;}
+  .wrap{max-width:800px;margin:0 auto;}
 
   header{margin-bottom:18px;}
   .eyebrow{
@@ -56,6 +56,18 @@
   }
   .sub{color:var(--ink-muted);font-size:13.5px;margin:0;max-width:48ch;}
 
+  .theme-bar{display:flex;align-items:center;gap:7px;margin:0 0 14px;flex-wrap:wrap;}
+  .theme-label{
+    font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--ink-muted);
+    text-transform:uppercase;letter-spacing:.05em;margin-right:2px;
+  }
+  .theme-swatch{
+    width:22px;height:22px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;
+    box-shadow:0 2px 6px rgba(44,42,74,.15);transition:transform .1s;
+  }
+  .theme-swatch:hover{transform:scale(1.12);}
+  .theme-swatch.active{border-color:var(--ink);}
+
   .sync-bar{
     background:var(--surface);border:1px solid var(--border);border-radius:12px;
     padding:10px 14px;margin:14px 0;backdrop-filter:blur(6px);
@@ -67,6 +79,7 @@
     background:var(--surface-solid);padding:3px 8px;border-radius:6px;
     font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent2);letter-spacing:.04em;
   }
+  .room-name-display{color:var(--ink);font-weight:700;}
   .sync-row button{
     background:none;border:1px solid var(--border);color:var(--ink-muted);
     font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px 10px;
@@ -89,6 +102,12 @@
     padding:7px 12px;border-radius:8px;cursor:pointer;
   }
   .btn-google:hover{border-color:var(--accent2);}
+  .btn-x{
+    display:flex;align-items:center;gap:6px;background:#000;border:1px solid #000;
+    color:#fff;font-family:'Inter',sans-serif;font-size:12.5px;font-weight:600;
+    padding:7px 12px;border-radius:8px;cursor:pointer;
+  }
+  .btn-x:hover{opacity:0.85;}
   .btn-logout{
     background:none;border:1px solid var(--border);color:var(--ink-muted);
     font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px 10px;
@@ -224,6 +243,7 @@
     box-shadow:0 6px 18px rgba(120,110,200,0.06);
   }
   .badge-row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+  .badge-group{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
   .status-badge{
     font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;
     padding:4px 9px;border-radius:6px;font-weight:600;display:inline-block;
@@ -233,6 +253,13 @@
   .status-badge.completed{background:#e2f6ea;color:var(--success);}
   .status-badge.hiatus{background:#fdf1de;color:var(--warn);}
   .status-badge.dropped{background:#fbe4e7;color:var(--danger);}
+  .type-badge{
+    font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+    padding:4px 9px;border-radius:6px;font-weight:600;display:inline-block;
+    background:var(--blue-soft);color:var(--accent2);border:1px solid transparent;
+  }
+  .type-badge.oneshot{background:#fff1e0;color:#c07f1f;}
+  .type-badge.series{background:var(--blue-soft);color:var(--accent2);}
 
   .del{background:none;border:none;color:#c7c2dc;cursor:pointer;font-size:15px;padding:2px 4px;}
   .del:hover{color:var(--danger);}
@@ -323,8 +350,10 @@
 
   <header>
     <p class="eyebrow">rak baca &mdash; thread AU</p>
-    <h1>RAK BACA AU</h1>
+    <h1 id="page-title">RAK BACA AU</h1>
   </header>
+
+  <div class="theme-bar" id="theme-bar"></div>
 
   <div class="sync-bar" id="sync-bar"></div>
 
@@ -368,6 +397,13 @@
           <option value="dropped">drop</option>
         </select>
       </div>
+      <div class="field status-field">
+        <label class="field-label" for="f-type">tipe</label>
+        <select id="f-type">
+          <option value="oneshot">one shot</option>
+          <option value="series" selected>series</option>
+        </select>
+      </div>
     </div>
     <button class="toggle-detail" id="toggle-detail">+ tambah detail (grup, ship, author, catatan)</button>
     <div class="detail-box" id="detail-box">
@@ -403,6 +439,7 @@
   </div>
 
   <div class="filters" id="filters"></div>
+  <div class="filters" id="type-filters"></div>
   <div class="search">
     <input type="text" id="search" placeholder="cari judul, grup, atau ship...">
   </div>
@@ -415,6 +452,44 @@
 </div>
 
 <script>
+const THEMES = {
+  sakura:   {label:'Sakura',   pink:'#ffb8d4', pinkSoft:'#ffe0ee', blue:'#9fd3ff', blueSoft:'#e2f1ff', accent:'#ff7fae', accent2:'#4fa6ec', plan:'#8b7de0'},
+  lavender: {label:'Lavender', pink:'#c9b6ff', pinkSoft:'#efe6ff', blue:'#9fd3ff', blueSoft:'#e6f0ff', accent:'#9b7bef', accent2:'#5b8de0', plan:'#7c6fe0'},
+  mint:     {label:'Mint',     pink:'#8fe3c0', pinkSoft:'#e2fbf1', blue:'#8fd8e8', blueSoft:'#e3f8fc', accent:'#2fae85', accent2:'#2f9bc0', plan:'#4f9e8f'},
+  sunset:   {label:'Sunset',   pink:'#ffb37a', pinkSoft:'#fff0e0', blue:'#ff9aa8', blueSoft:'#ffe8ec', accent:'#ff7f4f', accent2:'#e0567e', plan:'#e08a4f'},
+  mono:     {label:'Mono',     pink:'#cfcfd8', pinkSoft:'#f1f1f4', blue:'#b7bdc9', blueSoft:'#eef0f3', accent:'#2c2a4a', accent2:'#55536e', plan:'#4a4866'},
+};
+let currentTheme = localStorage.getItem('au-theme') || 'sakura';
+
+function applyTheme(name){
+  const t = THEMES[name] || THEMES.sakura;
+  const root = document.documentElement.style;
+  root.setProperty('--pink', t.pink);
+  root.setProperty('--pink-soft', t.pinkSoft);
+  root.setProperty('--blue', t.blue);
+  root.setProperty('--blue-soft', t.blueSoft);
+  root.setProperty('--accent', t.accent);
+  root.setProperty('--accent2', t.accent2);
+  root.setProperty('--plan', t.plan);
+  localStorage.setItem('au-theme', name);
+  currentTheme = name;
+  renderThemeBar();
+}
+
+function renderThemeBar(){
+  const el = document.getElementById('theme-bar');
+  if(!el) return;
+  el.innerHTML = `<span class="theme-label">tema:</span>` + Object.entries(THEMES).map(([key,t])=>`
+    <button class="theme-swatch ${key===currentTheme?'active':''}" data-theme="${key}" title="${esc(t.label)}"
+      style="background:linear-gradient(135deg, ${t.accent}, ${t.accent2})"></button>
+  `).join('');
+  el.querySelectorAll('.theme-swatch').forEach(btn=>{
+    btn.addEventListener('click', ()=> applyTheme(btn.dataset.theme));
+  });
+}
+
+applyTheme(currentTheme);
+
 const STATUS_META = {
   plan:      {label:'ingin dibaca', cls:'plan'},
   reading:   {label:'sedang dibaca', cls:'reading'},
@@ -429,6 +504,16 @@ const FILTERS = [
   {key:'completed', label:'selesai'},
   {key:'hiatus', label:'hiatus'},
   {key:'dropped', label:'drop'},
+];
+
+const TYPE_META = {
+  oneshot: {label:'one shot', cls:'oneshot'},
+  series:  {label:'series', cls:'series'},
+};
+const TYPE_FILTERS = [
+  {key:'all', label:'semua tipe'},
+  {key:'oneshot', label:'one shot'},
+  {key:'series', label:'series'},
 ];
 
 // ====== ISI CONFIG FIREBASE KAMU DI SINI ======
@@ -450,6 +535,7 @@ let roomCode = '';
 let unsubscribe = null;
 let currentUser = null;
 let roomOwnerUid = null; // ownerUid dari dokumen rak yang sedang dibuka
+let roomName = '';       // nama custom rak yang sedang dibuka
 let myRoomCode = null;   // rak milik currentUser (dari au-owners/{uid})
 let authReady = false;
 
@@ -479,6 +565,21 @@ async function loginGoogle(){
   }catch(e){
     console.error('login gagal', e);
     alert('login gagal, coba lagi ya');
+  }
+}
+
+async function loginX(){
+  if(!auth) return;
+  try{
+    const provider = new firebase.auth.TwitterAuthProvider();
+    await auth.signInWithPopup(provider);
+  }catch(e){
+    console.error('login X gagal', e);
+    if(e.code === 'auth/operation-not-allowed'){
+      alert('login X belum diaktifin di Firebase Console. Aktifin dulu provider Twitter di Authentication > Sign-in method.');
+    }else{
+      alert('login X gagal, coba lagi ya');
+    }
   }
 }
 
@@ -529,6 +630,7 @@ function renderSyncBar(){
     : `
       <div class="auth-row">
         <button class="btn-google" id="btn-login">🔵 login dengan Google</button>
+        <button class="btn-x" id="btn-login-x">𝕏 login dengan X</button>
         <span style="font-size:11.5px;color:var(--ink-muted);">buat punya rak sendiri &amp; bisa edit</span>
       </div>`;
 
@@ -550,9 +652,17 @@ function renderSyncBar(){
       <button id="btn-join">pakai kode lain</button>
       ${backToMineHtml}
     </div>
+    <div class="sync-row" id="room-name-row">
+      <span>nama rak:</span> <b class="room-name-display">${esc(roomName || 'belum dikasih nama')}</b>
+      ${isOwner() ? `<button id="btn-rename">✎ ganti nama</button>` : ''}
+    </div>
     <div class="join-box" id="join-box">
       <input type="text" id="join-input" placeholder="masukin kode rak (cth. AB12CD)">
       <button id="btn-join-go">gabung</button>
+    </div>
+    <div class="join-box" id="rename-box">
+      <input type="text" id="rename-input" maxlength="60" placeholder="cth. Rak AU Minwon" value="${esc(roomName)}">
+      <button id="btn-rename-go">simpan</button>
     </div>
   ` : `
     <div class="sync-row">
@@ -573,6 +683,7 @@ function renderSyncBar(){
     document.getElementById('btn-logout').addEventListener('click', logoutUser);
   }else{
     document.getElementById('btn-login').addEventListener('click', loginGoogle);
+    document.getElementById('btn-login-x').addEventListener('click', loginX);
   }
   if(roomCode){
     document.getElementById('btn-copy-code').addEventListener('click', async ()=>{
@@ -595,6 +706,17 @@ function renderSyncBar(){
       switchRoom(myRoomCode);
     });
   }
+  if(isOwner() && roomCode){
+    document.getElementById('btn-rename').addEventListener('click', ()=>{
+      document.getElementById('rename-box').classList.toggle('open');
+      document.getElementById('rename-input').focus();
+    });
+    document.getElementById('btn-rename-go').addEventListener('click', async ()=>{
+      const val = document.getElementById('rename-input').value;
+      await renameRoom(val);
+      document.getElementById('rename-box').classList.remove('open');
+    });
+  }
 }
 
 function switchRoom(code){
@@ -610,6 +732,8 @@ function subscribeEntries(){
     const data = doc.exists ? doc.data() : {};
     entries = data.entries || [];
     roomOwnerUid = data.ownerUid || null;
+    roomName = data.roomName || '';
+    updatePageTitle();
     renderSyncBar();
     render();
   }, err=>{
@@ -617,8 +741,26 @@ function subscribeEntries(){
   });
 }
 
+function updatePageTitle(){
+  const titleEl = document.getElementById('page-title');
+  if(titleEl) titleEl.textContent = roomName || 'RAK BACA AU';
+  document.title = roomName ? `${roomName} — rak baca AU` : 'rak baca au';
+}
+
+async function renameRoom(newName){
+  if(!useFirebase || !isOwner() || !roomCode) return;
+  const name = newName.trim().slice(0, 60);
+  try{
+    await db.collection('au-lists').doc(roomCode).set({ roomName: name }, { merge:true });
+  }catch(e){
+    console.error('gagal ganti nama rak', e);
+    alert('gagal nyimpen nama rak, coba lagi ya');
+  }
+}
+
 let entries = [];
 let currentFilter = 'all';
+let currentTypeFilter = 'all';
 let currentSearch = '';
 let editingId = null;
 
@@ -642,6 +784,8 @@ async function loadEntries(){
         myRoomCode = null;
         roomCode = '';
         roomOwnerUid = null;
+        roomName = '';
+        updatePageTitle();
         if(unsubscribe){ unsubscribe(); unsubscribe = null; }
         entries = [];
         document.getElementById('list').innerHTML =
@@ -649,6 +793,7 @@ async function loadEntries(){
         renderComposerLock();
         renderStats();
         renderFilters();
+        renderTypeFilters();
       }
       authReady = true;
       renderSyncBar();
@@ -687,6 +832,18 @@ function renderFilters(){
   });
 }
 
+function renderTypeFilters(){
+  const el = document.getElementById('type-filters');
+  el.innerHTML = '';
+  TYPE_FILTERS.forEach(f=>{
+    const b = document.createElement('button');
+    b.textContent = f.label + (f.key!=='all' ? ' ('+entries.filter(e=>e.type===f.key).length+')' : '');
+    if(f.key === currentTypeFilter) b.classList.add('active');
+    b.addEventListener('click', ()=>{ currentTypeFilter = f.key; render(); });
+    el.appendChild(b);
+  });
+}
+
 function renderStats(){
   const el = document.getElementById('stats');
   const total = entries.length;
@@ -703,6 +860,7 @@ function renderList(){
   const el = document.getElementById('list');
   let filtered = entries.filter(e=>{
     if(currentFilter !== 'all' && e.status !== currentFilter) return false;
+    if(currentTypeFilter !== 'all' && e.type !== currentTypeFilter) return false;
     if(currentSearch){
       const q = currentSearch.toLowerCase();
       const hay = (e.title+' '+e.group+' '+e.ship+' '+e.author).toLowerCase();
@@ -719,6 +877,7 @@ function renderList(){
 
   el.innerHTML = filtered.map(e=>{
     const meta = STATUS_META[e.status] || STATUS_META.plan;
+    const typeMeta = TYPE_META[e.type] || null;
     const canEdit = !useFirebase || isOwner();
     // di mode "lihat aja", selalu buka link thread awal — lastLink itu progres pribadi si pemilik rak
     const activeLink = (canEdit && e.status === 'reading' && e.lastLink) ? e.lastLink : e.link;
@@ -738,7 +897,10 @@ function renderList(){
     return `
       <div class="card">
         <div class="badge-row">
-          <span class="status-badge ${meta.cls}">${meta.label}</span>
+          <div class="badge-group">
+            <span class="status-badge ${meta.cls}">${meta.label}</span>
+            ${typeMeta ? `<span class="type-badge ${typeMeta.cls}">${typeMeta.label}</span>` : ''}
+          </div>
           ${canEdit ? `
           <div class="card-actions">
             <button class="edit-btn" data-id="${e.id}" title="edit">✎</button>
@@ -821,6 +983,7 @@ function openEditModal(id){
     target.title = document.getElementById('e-title').value.trim() || target.title;
     target.link = document.getElementById('e-link').value.trim();
     target.status = document.getElementById('e-status').value;
+    target.type = document.getElementById('e-type').value;
     target.group = document.getElementById('e-group').value.trim();
     target.ship = document.getElementById('e-ship').value.trim();
     target.author = document.getElementById('e-author').value.trim();
@@ -862,6 +1025,13 @@ function renderEditForm(e){
       <div class="field">
         <label class="field-label" for="e-status">status</label>
         <select id="e-status">${statusOptions}</select>
+      </div>
+      <div class="field">
+        <label class="field-label" for="e-type">tipe</label>
+        <select id="e-type">
+          <option value="oneshot" ${e.type==='oneshot'?'selected':''}>one shot</option>
+          <option value="series" ${e.type!=='oneshot'?'selected':''}>series</option>
+        </select>
       </div>
       <div class="detail-grid">
         <div class="field">
@@ -938,6 +1108,7 @@ function render(){
   renderStats();
   renderDashboard();
   renderFilters();
+  renderTypeFilters();
   renderList();
   renderAutocomplete();
 }
@@ -972,6 +1143,7 @@ async function addEntry(){
     title,
     link: document.getElementById('f-link').value.trim(),
     status: document.getElementById('f-status').value,
+    type: document.getElementById('f-type').value,
     group: document.getElementById('f-group').value.trim(),
     ship: document.getElementById('f-ship').value.trim(),
     author: document.getElementById('f-author').value.trim(),
@@ -985,6 +1157,7 @@ async function addEntry(){
   document.getElementById('f-title').value = '';
   document.getElementById('f-link').value = '';
   document.getElementById('f-status').value = 'reading';
+  document.getElementById('f-type').value = 'series';
   document.getElementById('f-group').value = '';
   document.getElementById('f-ship').value = '';
   document.getElementById('f-author').value = '';
