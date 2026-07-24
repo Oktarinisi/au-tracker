@@ -114,6 +114,12 @@
     font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px 10px;
     border-radius:7px;cursor:pointer;
   }
+  .btn-link{
+    background:none;border:1px dashed var(--accent2);color:var(--accent2);
+    font-family:'JetBrains Mono',monospace;font-size:10.5px;padding:5px 9px;
+    border-radius:7px;cursor:pointer;
+  }
+  .btn-link:hover{background:var(--blue-soft);}
   .owner-badge{
     font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;
     padding:3px 9px;border-radius:999px;letter-spacing:.03em;
@@ -590,6 +596,40 @@ async function loginX(){
   }
 }
 
+async function linkGoogleAccount(){
+  if(!auth || !auth.currentUser) return;
+  try{
+    const provider = new firebase.auth.GoogleAuthProvider();
+    await auth.currentUser.linkWithPopup(provider);
+    alert('berhasil! sekarang login Google atau X sama-sama nyambung ke rak ini.');
+    renderSyncBar();
+  }catch(e){
+    console.error('gagal hubungkan Google', e);
+    if(e.code === 'auth/credential-already-in-use'){
+      alert('akun Google itu udah kepake buat akun lain di sini. Kalau akun itu enggak lagi kepake, hapus dulu dari Firebase Console > Authentication > Users, baru coba hubungkan lagi.');
+    }else{
+      alert('gagal menghubungkan akun Google, coba lagi ya');
+    }
+  }
+}
+
+async function linkXAccount(){
+  if(!auth || !auth.currentUser) return;
+  try{
+    const provider = new firebase.auth.TwitterAuthProvider();
+    await auth.currentUser.linkWithPopup(provider);
+    alert('berhasil! sekarang login Google atau X sama-sama nyambung ke rak ini.');
+    renderSyncBar();
+  }catch(e){
+    console.error('gagal hubungkan X', e);
+    if(e.code === 'auth/credential-already-in-use'){
+      alert('akun X itu udah kepake buat akun lain di sini (biasanya dari percobaan login sebelumnya). Hapus dulu akun itu dari Firebase Console > Authentication > Users, baru coba hubungkan lagi.');
+    }else{
+      alert('gagal menghubungkan akun X, coba lagi ya');
+    }
+  }
+}
+
 async function logoutUser(){
   if(!auth) return;
   try{ await auth.signOut(); }catch(e){ console.error('logout gagal', e); }
@@ -627,12 +667,19 @@ function renderSyncBar(){
   }
   el.classList.remove('offline');
 
+  const linkedProviders = currentUser ? currentUser.providerData.map(p=>p.providerId) : [];
+  const linkBtnsHtml = currentUser ? `
+    ${!linkedProviders.includes('google.com') ? `<button class="btn-link" id="btn-link-google">+ hubungkan Google</button>` : ''}
+    ${!linkedProviders.includes('twitter.com') ? `<button class="btn-link" id="btn-link-x">+ hubungkan X</button>` : ''}
+  ` : '';
+
   const authHtml = currentUser
     ? `
       <div class="auth-row">
         ${currentUser.photoURL ? `<img src="${esc(currentUser.photoURL)}" alt="">` : ''}
         <span class="who">${esc(currentUser.displayName || currentUser.email || 'kamu')}</span>
         <button class="btn-logout" id="btn-logout">logout</button>
+        ${linkBtnsHtml}
       </div>`
     : `
       <div class="auth-row">
@@ -688,6 +735,10 @@ function renderSyncBar(){
 
   if(currentUser){
     document.getElementById('btn-logout').addEventListener('click', logoutUser);
+    const linkGoogleBtn = document.getElementById('btn-link-google');
+    if(linkGoogleBtn) linkGoogleBtn.addEventListener('click', linkGoogleAccount);
+    const linkXBtn = document.getElementById('btn-link-x');
+    if(linkXBtn) linkXBtn.addEventListener('click', linkXAccount);
   }else{
     document.getElementById('btn-login').addEventListener('click', loginGoogle);
     document.getElementById('btn-login-x').addEventListener('click', loginX);
